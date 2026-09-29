@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2048 우주</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 24px 16px;
+    background: radial-gradient(ellipse at 20% 10%, #2a1650 0%, transparent 50%),
+                radial-gradient(ellipse at 85% 80%, #0d3a5c 0%, transparent 55%),
+                #05030f;
+    color: #e6e1ff;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    overflow-x: hidden;
+  }
+  /* 배경 별 캔버스와 파티클 캔버스 */
+  #stars, #fx {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  #stars { z-index: 0; }
+  #fx { z-index: 10; }
+
+  .wrap { position: relative; z-index: 1; width: 100%; max-width: 420px; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 48px;
+    letter-spacing: 2px;
+    background: linear-gradient(90deg, #8ec5ff, #d38cff, #ff9ad5);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 10px rgba(180, 140, 255, 0.6));
+  }
+  .scores { display: flex; gap: 6px; }
+  .score-box {
+    background: rgba(40, 30, 90, 0.6);
+    border: 1px solid rgba(160, 140, 255, 0.4);
+    box-shadow: 0 0 12px rgba(120, 100, 255, 0.3);
+    border-radius: 8px;
+    padding: 6px 12px;
+    text-align: center;
+    min-width: 70px;
+  }
+  .score-box .label { font-size: 12px; color: #a9a0e0; }
+  .score-box .value { font-size: 20px; font-weight: bold; color: #fff; }
+  .bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .howto { margin: 0; font-size: 14px; line-height: 1.5; color: #c9c2f5; }
+  .howto b { color: #fff; }
+  button {
+    background: linear-gradient(135deg, #6a4cff, #b44cff);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+    box-shadow: 0 0 14px rgba(160, 90, 255, 0.55);
+    transition: transform 0.1s, box-shadow 0.2s;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 0 22px rgba(190, 120, 255, 0.85); }
+  .board {
+    position: relative;
+    background: rgba(15, 10, 40, 0.7);
+    border: 1px solid rgba(140, 120, 255, 0.35);
+    box-shadow: 0 0 30px rgba(100, 80, 255, 0.35), inset 0 0 30px rgba(60, 40, 160, 0.4);
+    border-radius: 12px;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    aspect-ratio: 1 / 1;
+    touch-action: none;
+    user-select: none;
+    backdrop-filter: blur(2px);
+  }
+  .cell {
+    background: rgba(90, 80, 160, 0.18);
+    border: 1px solid rgba(140, 130, 220, 0.12);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: clamp(20px, 8vw, 34px);
+    color: #fff;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+    transition: background 0.1s, box-shadow 0.2s;
+  }
+  .cell.pop { animation: pop 0.2s ease; }
+  .cell.merge { animation: merge 0.25s ease; }
+  @keyframes pop {
+    0% { transform: scale(0.3); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes merge {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 5, 25, 0.8);
+    border-radius: 12px;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    z-index: 2;
+  }
+  .overlay.show { display: flex; }
+  .overlay p {
+    margin: 0;
+    font-size: 32px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 14px #b48cff;
+  }
+  .overlay .btns { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<canvas id="fx"></canvas>
+
+<div class="wrap">
+  <header>
+    <h1>2048</h1>
+    <div class="scores">
+      <div class="score-box"><div class="label">점수</div><div class="value" id="score">0</div></div>
+      <div class="score-box"><div class="label">최고 점수</div><div class="value" id="best">0</div></div>
+    </div>
+  </header>
+
+  <div class="bar">
+    <p class="howto">
+      <b>사용법:</b> 방향키(← ↑ → ↓)로 행성을 밀어요. 휴대폰은 화면을 쓸어 넘기면 돼요.
+      같은 숫자가 부딪히면 합쳐져요. <b>2048</b>을 만들면 성공!
+    </p>
+    <button id="restart">다시 하기</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="overlay" id="overlay">
+      <p id="message"></p>
+      <div class="btns">
+        <button id="keepGoing">계속하기</button>
+        <button id="tryAgain">다시 하기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SIZE = 4;
+
+  // 숫자마다 행성 색 [안쪽 색, 바깥 색, 빛 색]
+  const COLORS = {
+    2:    ["#5b7cfa", "#27307a", "#5b7cfa"],
+    4:    ["#7b6cff", "#352a8c", "#7b6cff"],
+    8:    ["#b36bff", "#4d2388", "#b36bff"],
+    16:   ["#e76bff", "#6a1f82", "#e76bff"],
+    32:   ["#ff6bc1", "#7a1f5a", "#ff6bc1"],
+    64:   ["#ff6b8a", "#7a1f35", "#ff6b8a"],
+    128:  ["#4fe3ff", "#12607a", "#4fe3ff"],
+    256:  ["#4fffc1", "#127a5a", "#4fffc1"],
+    512:  ["#b8ff4f", "#4f7a12", "#b8ff4f"],
+    1024: ["#ffd84f", "#8a6212", "#ffd84f"],
+    2048: ["#ffffff", "#ffb800", "#ffe27a"]
+  };
+  const BIG = ["#ffffff", "#ff4fd8", "#ff4fd8"];
+
+  const boardEl = document.getElementById("board");
+  const overlay = document.getElementById("overlay");
+  const messageEl = document.getElementById("message");
+  const keepGoingBtn = document.getElementById("keepGoing");
+  const scoreEl = document.getElementById("score");
+  const bestEl = document.getElementById("best");
+
+  let grid, score, won, keepPlaying, newCell, mergedCells;
+  let best = loadBest();
+
+  // 칸 16개 만들기
+  const cells = [];
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const c = document.createElement("div");
+    c.className = "cell";
+    boardEl.insertBefore(c, overlay);
+    cells.push(c);
+  }
+
+  function loadBest() {
+    try { return Number(localStorage.getItem("best2048")) || 0; } catch (e) { return 0; }
+  }
+  function saveBest() {
+    try { localStorage.setItem("best2048", best); } catch (e) {}
+  }
+
+  function newGame() {
+    grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+    score = 0;
+    won = false;
+    keepPlaying = false;
+    mergedCells = [];
+    overlay.classList.remove("show");
+    addTile();
+    addTile();
+    draw();
+  }
+
+  function addTile() {
+    const empty = [];
+    for (let r = 0; r < SIZE; r++)
+      for (let c = 0; c < SIZE; c++)
+        if (grid[r][c] === 0) empty.push([r, c]);
+    if (empty.length === 0) return;
+    const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+    grid[r][c] = Math.random() < 0.9 ? 2 : 4;
+    newCell = r * SIZE + c;
+  }
+
+  function draw() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const idx = r * SIZE + c;
+        const v = grid[r][c];
+        const el = cells[idx];
+        el.textContent = v || "";
+        if (v) {
+          const [inner, outer, glow] = COLORS[v] || BIG;
+          el.style.background = `radial-gradient(circle at 35% 30%, ${inner}, ${outer} 75%)`;
+          el.style.boxShadow = `0 0 ${10 + Math.log2(v) * 2}px ${glow}, inset -6px -8px 14px rgba(0,0,0,0.35)`;
+          el.style.borderColor = "transparent";
+        } else {
+          el.style.background = "";
+          el.style.boxShadow = "";
+          el.style.borderColor = "";
+        }
+        el.style.fontSize = v >= 1024 ? "clamp(15px, 5.5vw, 26px)" : v >= 128 ? "clamp(18px, 7vw, 30px)" : "";
+        el.classList.remove("pop", "merge");
+        void el.offsetWidth; // 애니메이션 다시 시작
+        if (idx === newCell) el.classList.add("pop");
+        else if (mergedCells.includes(idx)) el.classList.add("merge");
+      }
+    }
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      saveBest();
+    }
+    bestEl.textContent = best;
+  }
+
+  // 한 줄을 왼쪽으로 밀고 합치기. 합쳐진 자리 번호도 알려 줌
+  function slideRow(row) {
+    const nums = row.filter(v => v);
+    const out = [];
+    const merged = [];
+    for (let i = 0; i < nums.length; i++) {
+      if (nums[i] === nums[i + 1]) {
+        const v = nums[i] * 2;
+        merged.push(out.length);
+        out.push(v);
+        score += v;
+        if (v === 2048) won = true;
+        i++;
+      } else {
+        out.push(nums[i]);
+      }
+    }
+    while (out.length < SIZE) out.push(0);
+    return { out, merged };
+  }
+
+  // 방향에 따라 i번째 줄의 j번째 칸이 실제로 어디인지
+  function pos(dir, i, j) {
+    if (dir === "left")  return [i, j];
+    if (dir === "right") return [i, SIZE - 1 - j];
+    if (dir === "up")    return [j, i];
+    return [SIZE - 1 - j, i]; // down
+  }
+
+  function move(dir) {
+    if (overlay.classList.contains("show")) return;
+    const before = JSON.stringify(grid);
+    mergedCells = [];
+
+    for (let i = 0; i < SIZE; i++) {
+      const line = [];
+      for (let j = 0; j < SIZE; j++) {
+        const [r, c] = pos(dir, i, j);
+        line.push(grid[r][c]);
+      }
+      const { out, merged } = slideRow(line);
+      for (let j = 0; j < SIZE; j++) {
+        const [r, c] = pos(dir, i, j);
+        grid[r][c] = out[j];
+      }
+      merged.forEach(j => {
+        const [r, c] = pos(dir, i, j);
+        mergedCells.push(r * SIZE + c);
+      });
+    }
+
+    if (JSON.stringify(grid) === before) return; // 아무것도 안 움직였으면 끝
+    addTile();
+    draw();
+    spawnMoveParticles(dir);
+
+    if (won && !keepPlaying) {
+      showMessage("성공! 🎉", true);
+      celebrate();
+    } else if (!canMove()) {
+      showMessage("게임 끝!", false);
+    }
+  }
+
+  function canMove() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (grid[r][c] === 0) return true;
+        if (c < SIZE - 1 && grid[r][c] === grid[r][c + 1]) return true;
+        if (r < SIZE - 1 && grid[r][c] === grid[r + 1][c]) return true;
+      }
+    }
+    return false;
+  }
+
+  function showMessage(text, canContinue) {
+    messageEl.textContent = text;
+    keepGoingBtn.style.display = canContinue ? "" : "none";
+    overlay.classList.add("show");
+  }
+
+  /* ---------- 배경 별 ---------- */
+  const starCanvas = document.getElementById("stars");
+  const sctx = starCanvas.getContext("2d");
+  const fxCanvas = document.getElementById("fx");
+  const fctx = fxCanvas.getContext("2d");
+  let W, H, stars = [], shootingStar = null;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    for (const cv of [starCanvas, fxCanvas]) {
+      cv.width = W * dpr;
+      cv.height = H * dpr;
+      cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    stars = Array.from({ length: Math.floor(W * H / 3500) }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.4 + 0.2,
+      speed: Math.random() * 0.15 + 0.02,
+      phase: Math.random() * Math.PI * 2
+    }));
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function drawStars(t) {
+    sctx.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      s.y += s.speed;
+      if (s.y > H) { s.y = 0; s.x = Math.random() * W; }
+      const a = 0.4 + 0.6 * Math.abs(Math.sin(t / 900 + s.phase));
+      sctx.fillStyle = `rgba(255,255,255,${a})`;
+      sctx.beginPath();
+      sctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      sctx.fill();
+    }
+    // 가끔 별똥별
+    if (!shootingStar && Math.random() < 0.003) {
+      shootingStar = { x: Math.random() * W, y: Math.random() * H * 0.4, life: 1 };
+    }
+    if (shootingStar) {
+      const s = shootingStar;
+      const g = sctx.createLinearGradient(s.x, s.y, s.x - 80, s.y - 40);
+      g.addColorStop(0, `rgba(255,255,255,${s.life})`);
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      sctx.strokeStyle = g;
+      sctx.lineWidth = 2;
+      sctx.beginPath();
+      sctx.moveTo(s.x, s.y);
+      sctx.lineTo(s.x - 80, s.y - 40);
+      sctx.stroke();
+      s.x += 8; s.y += 4; s.life -= 0.02;
+      if (s.life <= 0) shootingStar = null;
+    }
+  }
+
+  /* ---------- 파티클 ---------- */
+  let particles = [];
+  const MAX_PARTICLES = 700;
+
+  function addParticle(p) {
+    if (particles.length < MAX_PARTICLES) particles.push(p);
+  }
+
+  function cellCenter(idx) {
+    const rect = cells[idx].getBoundingClientRect();
+    return [rect.left + rect.width / 2, rect.top + rect.height / 2, rect.width];
+  }
+
+  function colorOf(v) {
+    return (COLORS[v] || BIG)[2];
+  }
+
+  function spawnMoveParticles(dir) {
+    // 움직인 반대쪽으로 날리는 꼬리 별가루
+    const back = { left: [1, 0], right: [-1, 0], up: [0, 1], down: [0, -1] }[dir];
+    for (let idx = 0; idx < SIZE * SIZE; idx++) {
+      const v = grid[Math.floor(idx / SIZE)][idx % SIZE];
+      if (!v || idx === newCell) continue;
+      const [x, y, w] = cellCenter(idx);
+      for (let k = 0; k < 4; k++) {
+        addParticle({
+          x: x + (Math.random() - 0.5) * w * 0.6,
+          y: y + (Math.random() - 0.5) * w * 0.6,
+          vx: back[0] * (Math.random() * 2 + 1) + (Math.random() - 0.5) * 0.8,
+          vy: back[1] * (Math.random() * 2 + 1) + (Math.random() - 0.5) * 0.8,
+          size: Math.random() * 2 + 1,
+          color: colorOf(v),
+          life: 1,
+          decay: 0.03 + Math.random() * 0.02,
+          star: false
+        });
+      }
+    }
+
+    // 합쳐진 곳에서 터지는 반짝이
+    for (const idx of mergedCells) {
+      const v = grid[Math.floor(idx / SIZE)][idx % SIZE];
+      burst(idx, colorOf(v), 16 + Math.min(Math.log2(v) * 3, 30));
+    }
+
+    // 새로 생긴 행성 주위에 작은 반짝임
+    if (newCell !== undefined) {
+      const [x, y, w] = cellCenter(newCell);
+      for (let k = 0; k < 10; k++) {
+        const a = (Math.PI * 2 * k) / 10;
+        addParticle({
+          x: x + Math.cos(a) * w * 0.45,
+          y: y + Math.sin(a) * w * 0.45,
+          vx: Math.cos(a) * 0.6,
+          vy: Math.sin(a) * 0.6,
+          size: 1.5,
+          color: "#ffffff",
+          life: 1,
+          decay: 0.04,
+          star: false
+        });
+      }
+    }
+  }
+
+  function burst(idx, color, count) {
+    const [x, y] = cellCenter(idx);
+    for (let k = 0; k < count; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = Math.random() * 4 + 1.5;
+      addParticle({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        size: Math.random() * 3 + 2,
+        color: Math.random() < 0.3 ? "#ffffff" : color,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.02,
+        star: Math.random() < 0.4,
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.3
+      });
+    }
+  }
+
+  function celebrate() {
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      setTimeout(() => burst(i, Object.values(COLORS)[i % 11][2], 20), i * 60);
+    }
+  }
+
+  // 반짝이는 네 갈래 별 모양
+  function drawSparkle(ctx, x, y, s, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(s * 0.25, s * 0.25, s * 2, 0);
+      ctx.quadraticCurveTo(s * 0.25, -s * 0.25, 0, 0);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    fctx.clearRect(0, 0, W, H);
+    fctx.globalCompositeOperation = "lighter";
+    particles = particles.filter(p => p.life > 0);
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.life -= p.decay;
+      if (p.rot !== undefined) p.rot += p.spin;
+      fctx.globalAlpha = Math.max(p.life, 0);
+      fctx.fillStyle = p.color;
+      fctx.shadowColor = p.color;
+      fctx.shadowBlur = 8;
+      if (p.star) {
+        drawSparkle(fctx, p.x, p.y, p.size * p.life + 1, p.rot);
+      } else {
+        fctx.beginPath();
+        fctx.arc(p.x, p.y, p.size * (0.5 + p.life / 2), 0, Math.PI * 2);
+        fctx.fill();
+      }
+    }
+    fctx.globalAlpha = 1;
+    fctx.shadowBlur = 0;
+    fctx.globalCompositeOperation = "source-over";
+  }
+
+  function loop(t) {
+    drawStars(t);
+    drawParticles();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  /* ---------- 조작 ---------- */
+  const KEYS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+  document.addEventListener("keydown", e => {
+    if (KEYS[e.key]) {
+      e.preventDefault();
+      move(KEYS[e.key]);
+    }
+  });
+
+  let startX, startY;
+  boardEl.addEventListener("touchstart", e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  });
+  boardEl.addEventListener("touchend", e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
+    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? "right" : "left");
+    else move(dy > 0 ? "down" : "up");
+  });
+
+  document.getElementById("restart").addEventListener("click", newGame);
+  document.getElementById("tryAgain").addEventListener("click", newGame);
+  keepGoingBtn.addEventListener("click", () => {
+    keepPlaying = true;
+    overlay.classList.remove("show");
+  });
+
+  newGame();
+</script>
+</body>
+</html>
